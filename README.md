@@ -27,7 +27,7 @@ file-downloader/
 
 ```bash
 go build -o main ./cmd/app/mulDownload.go
-
+```
 
 # Usage
 
