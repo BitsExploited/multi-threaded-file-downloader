@@ -14,12 +14,14 @@ A high-speed, multi-threaded file downloader built in **Go**, designed to split 
 ---
 
 ## Project Structure
+```bash
 file-downloader/
 ├── cmd/ # Main CLI entry point
 │ └── app/
 │ └── mulDownloader.go
 ├── go.mod
 └── README.md
+```
 
 ### 🔧 Build
 
