@@ -32,6 +32,16 @@ type ProgressWriter struct {
 	PartIndex int
 }
 
+func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
+	n, err = pw.Writer.Write(p) 
+	if err == nil {
+		pw.Downloader.Mutex.Lock()
+		pw.Downloader.Downloaded += int64(n)
+		pw.Downloader.Mutex.Unlock()
+	}
+	return
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: donwloader <url> <output_path> [concurrency]")
