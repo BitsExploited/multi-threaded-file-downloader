@@ -42,6 +42,99 @@ func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+func (d *Downloader) Download() error {
+	// Get file size
+	resp, err := http.Head(d.URL)
+	if err != nil {
+		return fmt.Errorf("failed to get file size: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned status: %s", resp.Status)
+	}
+
+	d.TotalSize = resp.ContentLength
+	if d.TotalSize <= 0 {
+		return fmt.Errorf("invalid file size: %d", d.TotalSize)
+	}
+
+	// Create output directory
+	if err := os.MkdirAll(filepath.Dir(d.OutPath), 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %v", err)
+	}
+
+	// Create temporary files for parts
+	partFiles := make([]*os.File, d.Concurrency)
+	for i := 0; i < d.Concurrency; i++ {
+		partFiles[i], err = os.CreateTemp("", "download_part_")
+		if err != nil {
+			return fmt.Errorf("failed to create temp file: %v", err)
+		}
+		defer os.Remove(partFiles[i].Name())
+		defer partFiles[i].Close()
+	}
+
+	// Calculate part sizes
+	partSize := d.TotalSize / int64(d.Concurrency)
+	parts := make([]DownloadPart, d.Concurrency)
+	for i := 0; i < d.Concurrency; i++ {
+		start := int64(i) * partSize
+		end := start + partSize - 1
+		if i == d.Concurrency-1 {
+			end = d.TotalSize - 1
+		}
+		parts[i] = DownloadPart{
+			Index: i,
+			Start: start,
+			End:   end,
+		}
+	}
+
+	done := make(chan struct{})
+	go d.reportProgress(done)
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, d.Concurrency)
+
+	for i, part := range parts {
+		wg.Add(1)
+		go func(part DownloadPart, partFile *os.File) {
+			defer wg.Done()
+			if err := d.downloadPart(part, partFile); err != nil {
+				errChan <- fmt.Errorf("failed to download part %d: %v", part.Index, err)
+			}
+		}(part, partFiles[i])
+	}
+
+	wg.Wait()
+	close(errChan)
+	close(done) 
+
+	if len(errChan) > 0 {
+		return <-errChan
+	}
+
+	outFile, err := os.Create(d.OutPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %v", err)
+	}
+	defer outFile.Close()
+
+	for _, partFile := range partFiles {
+		if _, err := partFile.Seek(0, 0); err != nil {
+			return fmt.Errorf("failed to seek part file: %v", err)
+		}
+		if _, err := io.Copy(outFile, partFile); err != nil {
+			return fmt.Errorf("failed to write part to output: %v", err)
+		}
+	}
+
+	fmt.Printf("\nDownload completed: %s\n", d.OutPath)
+	return nil
+}
+
+
 func (d *Downloader) downloadPart(part DownloadPart, partFile *os.File) error {
 	req, err := http.NewRequest("GET", d.URL, nil) 
 	if err  != nil {
