@@ -42,6 +42,23 @@ func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+func (d *Downloader) reportProgress(done chan struct{}) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			d.Mutex.Lock()
+			percent := float64(d.Downloaded) / float64(d.TotalSize) * 100
+			fmt.Printf("\rDownloading: %.2f%% (%d / %d bytes)", percent, d.Downloaded, d.TotalSize)
+			d.Mutex.Unlock()
+		}
+	}
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: donwloader <url> <output_path> [concurrency]")
