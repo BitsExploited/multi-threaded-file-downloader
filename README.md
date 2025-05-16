@@ -13,6 +13,9 @@ A high-speed, multi-threaded file downloader built in **Go**, designed to split 
 
 ---
 
+# Requirements
+- Golang
+
 ## Project Structure
 ```bash
 file-downloader/
