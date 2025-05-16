@@ -42,6 +42,37 @@ func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+func (d *Downloader) downloadPart(part DownloadPart, partFile *os.File) error {
+	req, err := http.NewRequest("GET", d.URL, nil) 
+	if err  != nil {
+		return err
+	}
+
+	rangeHeader := fmt.Sprintf("bytes=%d-%d", part.Start, part.End)
+	req.Header.Set("Range", rangeHeader)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return fmt.Errorf("server returned status: %s", resp.Status)
+	}
+
+	progressWriter := &ProgressWriter{
+		Writer:     partFile,
+		Downloader: d,
+		PartIndex:  part.Index,
+	}
+
+	_, err = io.Copy(progressWriter, resp.Body)
+	return err
+
+}
+
 func (d *Downloader) reportProgress(done chan struct{}) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
