@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -16,8 +17,7 @@ type Downloader struct {
 	OutPath string
 	Concurrency int
 	TotalSize int64
-	Downloaded int64
-	Mutex sync.Mutex
+	Downloaded uint64
 }
 
 type DownloadPart struct {
@@ -35,9 +35,7 @@ type ProgressWriter struct {
 func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
 	n, err = pw.Writer.Write(p) 
 	if err == nil {
-		pw.Downloader.Mutex.Lock()
-		pw.Downloader.Downloaded += int64(n)
-		pw.Downloader.Mutex.Unlock()
+		atomic.AddUint64(&pw.Downloader.Downloaded, uint64(n))
 	}
 	return
 }
@@ -175,10 +173,9 @@ func (d *Downloader) reportProgress(done chan struct{}) {
 		case <-done:
 			return
 		case <-ticker.C:
-			d.Mutex.Lock()
-			percent := float64(d.Downloaded) / float64(d.TotalSize) * 100
+			downloaded := atomic.LoadUint64(&d.Downloaded)
+			percent := float64(downloaded) / float64(d.TotalSize) * 100
 			fmt.Printf("\rDownloading: %.2f%% (%d / %d bytes)", percent, d.Downloaded, d.TotalSize)
-			d.Mutex.Unlock()
 		}
 	}
 }
